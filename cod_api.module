@@ -18,14 +18,40 @@ function cod_api_menu() {
     'page callback' => '_cod_api_json_node_list',
     'page arguments' => array(1),
   );
+
   $items['cod-api/%/%node'] = array(
     'type' => MENU_CALLBACK,
-    'access arguments' => array('access content'),
-    'page callback' => '_cod_api_json_node',
+    'access callback' => 'cod_api_menu_node_access',
+    'access arguments' => array('view', 1, 2),
+    'page callback' => '_cod_api_node_json_page_callback',
+    'page arguments' => array(2),
+  );
+
+  $items['cod-api/user/%user'] = array(
+    'type' => MENU_CALLBACK,
+    'access callback' => 'user_view_access',
+    'access arguments' => array(2),
+    'page callback' => '_cod_api_user_json_page_callback',
     'page arguments' => array(2),
   );
 
   return $items;
+}
+
+function cod_api_accessible_node_types() {
+  return array('room', 'session');
+}
+
+function cod_api_node_type_access($type) {
+  return in_array($type, cod_api_accessible_node_types());
+}
+
+/**
+ * Menu access callback.  Make sure that the passed type matches the node type
+ * and then delegate to node_access().
+ */
+function cod_api_menu_node_access($op, $type, $node) {
+  return ($type == $node->type) && cod_api_node_type_access($type) && node_access($op, $node);
 }
 
 /**
@@ -48,23 +74,65 @@ function _cod_api_get_nodes_by_type($type) {
   return $nodes;
 }
 
+function _cod_api_timestamp_to_json($timestamp) {
+  return date_format_date(date_make_date($timestamp, NULL, DATE_UNIX), 'custom', 'c');
+}
+
 /**
  * Prepare a node for rendering to json.
  */
 function _cod_api_node_to_json($node) {
-  $node->uri = url('cod-api/'. $node->type .'/'. $node->nid, array('absolute' => TRUE));
-  drupal_alter('cod_api_node', $node);
-  return $node;
+  $json = (object)array(
+    'nid' => $node->nid,
+    'title' => $node->title,
+    'created' => _cod_api_timestamp_to_json($node->created),
+    'changed' => _cod_api_timestamp_to_json($node->changed),
+    'body' => $node->body,
+  );
+  if (cod_api_node_type_access($node->type)) {
+    $json->uri = url('cod-api/'. $node->type .'/'. $node->nid, array('absolute' => TRUE));
+  }
+  drupal_alter('cod_api_node', $json, $node);
+  return $json;
+}
+
+/**
+ * Prepare a user for rendering to json.
+ */
+function _cod_api_user_to_json($account) {
+  $json = (object)array(
+    'uid' => $account->uid,
+    'name' => $account->name,
+    'picture' => file_create_url($account->picture),
+    'first_name' => $account->profile_first,
+    'last_name' => $account->profile_last,
+    'organization' => $account->profile_org,
+    'uri' => url('cod-api/user/'. $account->uid, array('absolute' => TRUE)),
+  );
+  drupal_alter('cod_api_user', $json, $account);
+  return $json;
 }
 
 /**
  * Page callback to render a single node.
  */
-function _cod_api_json_node($node) {
-  $node = _cod_api_node_to_json($node);
-
+function _cod_api_node_json_page_callback($node) {
   $data = array(
-    $node->type => array($node),
+    $node->type => _cod_api_node_to_json($node),
+  );
+
+  drupal_set_header("Content-Type: application/json; charset=utf-8");
+  print json_encode($data);
+  module_invoke_all('exit');
+  exit;
+}
+
+/**
+ * Page callback to render a single user.
+ */
+function _cod_api_user_json_page_callback($account) {
+  $data = array(
+    'user' => _cod_api_user_to_json($account),
   );
 
   drupal_set_header("Content-Type: application/json; charset=utf-8");
@@ -100,4 +168,46 @@ function _cod_api_json_node_list_combined() {
   print json_encode($data);
   module_invoke_all('exit');
   exit;
+}
+
+function cod_api_cod_api_node_alter(&$json, $node) {
+  switch ($node->type) {
+    case 'session':
+      $json->experience = $node->field_experience[0]['value'];
+      $json->track = $node->field_track[0]['value'];
+
+      $json->speakers = array();
+      foreach ($node->field_speakers as $delta => $speaker) {
+        $speaker = user_load($speaker);
+        $json->speakers[] = _cod_api_user_to_json($speaker);
+      }
+
+      if (!empty($node->field_session_slot[0]['nid']) && ($slot = node_load($node->field_session_slot[0]['nid']))) {
+        $fields = content_fields();
+        $field = $fields['field_slot_datetime'];
+        $data = $slot->field_slot_datetime[0];
+
+        $start_date = date_make_date($data['value'], $data['timezone'], $field['type'], $field['granularity']);
+        $end_date = date_make_date($data['value2'], $data['timezone'], $field['type'], $field['granularity']);
+
+        $json->start = date_format_date($start_date, 'custom', 'c');
+        $json->end = date_format_date($end_date, 'custom', 'c');
+      }
+
+      if (!empty($node->field_session_room[0]['nid']) && ($room = node_load($node->field_session_room[0]['nid']))) {
+        $json->room = $room->title;
+      }
+
+      $json->accepted = !empty($node->field_accepted[0]['value']);
+
+      break;
+
+    case 'room':
+      $json->capacity = $node->field_room_capacity[0]['value'];
+      break;
+
+    default:
+      $json->node = $node;
+      break;
+  }
 }
