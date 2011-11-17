@@ -39,7 +39,7 @@ function cod_api_menu() {
 }
 
 function cod_api_accessible_node_types() {
-  return array('session', 'sponsor');
+  return array('session', 'sponsor', 'news');
 }
 
 function cod_api_node_type_access($type) {
@@ -87,7 +87,7 @@ function _cod_api_node_to_json($node) {
     'title' => $node->title,
     'created' => _cod_api_timestamp_to_json($node->created),
     'changed' => _cod_api_timestamp_to_json($node->changed),
-    'body' => $node->body,
+    'body' => check_markup($node->body, $node->format, FALSE),
   );
   if (cod_api_node_type_access($node->type)) {
     $json->uri = url('cod-api/'. $node->type .'/'. $node->nid, array('absolute' => TRUE));
@@ -213,6 +213,9 @@ function cod_api_cod_api_node_alter(&$json, $node) {
 
       break;
 
+    case 'news':
+      break;
+      
     default:
       $json->node = $node;
       break;
