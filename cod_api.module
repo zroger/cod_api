@@ -14,7 +14,8 @@ function cod_api_menu() {
 
   $items['cod-api/%'] = array(
     'type' => MENU_CALLBACK,
-    'access arguments' => array('access content'),
+    'access callback' => 'cod_api_node_type_access',
+    'access arguments' => array(1),
     'page callback' => '_cod_api_json_node_list',
     'page arguments' => array(1),
   );
@@ -174,7 +175,12 @@ function cod_api_cod_api_node_alter(&$json, $node) {
   switch ($node->type) {
     case 'session':
       $json->experience = $node->field_experience[0]['value'];
-      $json->track = $node->field_track[0]['value'];
+      
+      $field = content_fields('field_experience', 'session');
+      $json->experience = content_format($field, $node->field_experience[0], 'default', $node);
+
+      $field = content_fields('field_track', 'session');
+      $json->track = content_format($field, $node->field_track[0], 'default', $node);
 
       $json->speakers = array();
       foreach ($node->field_speakers as $delta => $speaker) {
@@ -199,7 +205,6 @@ function cod_api_cod_api_node_alter(&$json, $node) {
       }
 
       $json->accepted = !empty($node->field_accepted[0]['value']);
-
       break;
 
     case 'room':
@@ -207,7 +212,8 @@ function cod_api_cod_api_node_alter(&$json, $node) {
       break;
 
     case 'sponsor':
-      $json->level = $node->field_sponsorship_level[0]['value'];
+      $field = content_fields('field_sponsorship_level', 'sponsor');
+      $json->level = content_format($field, $node->field_sponsorship_level[0], 'default', $node);
       $json->logo = file_create_url($node->field_logo[0]['filepath']);
       $json->url = check_url($node->field_url[0]['url']);
 
@@ -217,7 +223,6 @@ function cod_api_cod_api_node_alter(&$json, $node) {
       break;
       
     default:
-      $json->node = $node;
       break;
   }
 }
