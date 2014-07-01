@@ -216,7 +216,12 @@ function cod_api_cod_api_node_alter(&$json, $node) {
         $json->room = $room->title;
       }
 
-      $json->accepted = !empty($node->field_accepted[0]['value']);
+      // Cod seems to do 1 => accepted, and 2 => Declined :-/.
+      // I'm to lazy to add some if/else/etc. First lets check for an empty value,
+      // if it's empty return false, else check for a value of one, if it equals one return true,
+      // other wise return false. So if the value isn't one we return false.
+      $accepted_status = (empty($node->field_accepted[0]['value']) ? FALSE : (($node->field_accepted[0]['value'] == 1) ? TRUE : FALSE));
+      $json->accepted = $accepted_status;
       break;
 
     case 'schedule_item':
